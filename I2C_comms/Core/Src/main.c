@@ -1,4 +1,5 @@
 /* USER CODE BEGIN Header */
+/* okay now I have this comment in my main folder to test something*/
 /**
   ******************************************************************************
   * @file           : main.c
