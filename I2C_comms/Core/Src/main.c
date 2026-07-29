@@ -62,6 +62,15 @@ static void MX_I2C1_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+#define baro_I2C_ADDR 0x77
+#define baro_PSR_B2 0x00
+#define baro_PSR_B1 0x01
+#define baro_PSR_B0 0x02
+#define baro_TMP_B2 0x03
+#define baro_TMP_B1 0x04
+#define baro_TMP_B0 0x05
+#define baro_PRS_CFG 0x06
+#define baro_TMP_CFG 0x07
 
 /* USER CODE END 0 */
 
@@ -99,6 +108,13 @@ int main(void)
   MX_GPIO_Init();
   MX_I2C1_Init();
   /* USER CODE BEGIN 2 */
+ 
+  
+    uint8_t tmp_cfg = 0x90;
+    uint8_t tmp_cfg_read = 0x00;
+    
+    
+
 
   /* USER CODE END 2 */
 
@@ -133,6 +149,15 @@ int main(void)
 
   /* USER CODE END BSP */
 
+
+  if (HAL_I2C_Mem_Write(&hi2c1, baro_I2C_ADDR << 1, baro_TMP_CFG, I2C_MEMADD_SIZE_8BIT, &tmp_cfg, 1, HAL_MAX_DELAY) == HAL_OK) {
+      printf("WROTE tmp_cfg %02x to baro_TMP_CFG\n\r", tmp_cfg);
+    }
+    else{
+      printf("Error in attempting write\n\r");
+    }
+
+
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
@@ -141,6 +166,12 @@ int main(void)
     /* -- Sample board code for User push-button in interrupt mode ---- */
     if (BspButtonState == BUTTON_PRESSED)
     {
+      if (HAL_I2C_Mem_Read(&hi2c1, baro_I2C_ADDR << 1, baro_TMP_CFG, I2C_MEMADD_SIZE_8BIT, &tmp_cfg_read, 1, HAL_MAX_DELAY) == HAL_OK) {
+        printf("READ tmp_cfg %02x from baro_TMP_CFG\n\r", tmp_cfg_read);
+      }
+      else{
+        printf("Error in attempting read\n\r");
+      }
       /* Update button state */
       BspButtonState = BUTTON_RELEASED;
       /* -- Sample board code to toggle leds ---- */
