@@ -96,7 +96,16 @@ static void MX_I2C1_Init(void);
 #define baro_c30_a 0x20
 #define baro_c30_b 0x21
 
-
+// Calibration Coefficients
+int16_t c0_val;
+int16_t c1_val;
+int16_t c00_val;
+int16_t c10_val;
+int16_t c01_val;
+int16_t c11_val;
+int16_t c20_val;
+int16_t c21_val;
+int16_t c30_val;
 
 // Read register function
 uint8_t read_register(uint8_t reg) {
@@ -193,7 +202,6 @@ int main(void)
   /* USER CODE BEGIN BSP */
 
   /* -- Sample board code to send message over COM1 port ---- */
-  printf("Welcome to STM32 world !\n\r");
 
   /* -- Sample board code to switch on leds ---- */
   BSP_LED_On(LED_GREEN);
@@ -201,6 +209,29 @@ int main(void)
   BSP_LED_On(LED_RED);
 
   /* USER CODE END BSP */
+
+  // Calculate coefficients
+
+  c0_val = (read_register(baro_c0) << 4) | (read_register(baro_c0_c1) >> 4); 
+  if (c0_val & 0x0800) { // Check if the sign bit is set
+    c0_val |= 0xF000; // Sign extend to 16 bits
+  }
+
+  c1_val = ((read_register(baro_c0_c1) & 0x0F) << 8) | read_register(baro_c1);
+  if (c1_val & 0x0800) { // Check if the sign bit is set
+    c1_val |= 0xF000; // Sign extend to 16 bits
+  }
+
+  c00_val = (read_register(baro_c00_a) << 12) | (read_register(baro_c00_b) << 4) | (read_register(baro_c00_c10) >> 4);
+  if (c00_val & 0x080000) { // Check if the sign bit is set
+    c00_val |= 0xFF000000; // Sign extend to 32 bits
+  }
+
+
+  printf("c0_val: %d\n\r", c0_val);
+  printf("c1_val: %d\n\r", c1_val);
+
+
 
 
   // Configuration Register
