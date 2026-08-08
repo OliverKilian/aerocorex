@@ -71,6 +71,50 @@ static void MX_I2C1_Init(void);
 #define baro_TMP_B0 0x05
 #define baro_PRS_CFG 0x06
 #define baro_TMP_CFG 0x07
+#define baro_MEAS_CFG 0x08
+#define baro_CFG_REG 0x09
+#define baro_reset 0x0C
+
+
+// Calibration Coefficients
+#define baro_c0 0x10
+#define baro_c0_c1 0x11
+#define baro_c1 0x12
+#define baro_c00_a 0x13
+#define baro_c00_b 0x14
+#define baro_c00_c10 0x15
+#define baro_c10_a 0x16
+#define baro_c10_b 0x17
+#define baro_c01_a 0x18
+#define baro_c01_b 0x19
+#define baro_c11_a 0x1A
+#define baro_c11_b 0x1B
+#define baro_c20_a 0x1C
+#define baro_c20_b 0x1D
+#define baro_c21_a 0x1E
+#define baro_c21_b 0x1F
+#define baro_c30_a 0x20
+#define baro_c30_b 0x21
+
+
+
+// Read register function
+uint8_t read_register(uint8_t reg) {
+  uint8_t data;
+  HAL_I2C_Mem_Read(&hi2c1, baro_I2C_ADDR << 1, reg, I2C_MEMADD_SIZE_8BIT, &data, 1, HAL_MAX_DELAY);
+  return data;
+}
+
+// Write register function
+void write_register(uint8_t reg, uint8_t value) {
+  HAL_I2C_Mem_Write(&hi2c1, baro_I2C_ADDR << 1, reg, I2C_MEMADD_SIZE_8BIT, &value, 1, HAL_MAX_DELAY);
+}
+
+// Delay Function
+void delay(uint32_t milliseconds) {
+  HAL_Delay(milliseconds);
+}
+
 
 /* USER CODE END 0 */
 
@@ -109,11 +153,20 @@ int main(void)
   MX_I2C1_Init();
   /* USER CODE BEGIN 2 */
  
-  
-    uint8_t tmp_cfg = 0x90;
-    uint8_t tmp_cfg_read = 0x00;
+  // Read write variable declarations
+  uint8_t meas_cfg = 0x03;
+  uint8_t meas_cfg_read = 0x00;
+
+  uint8_t tmp_cfg = 0x90;
+  uint8_t tmp_cfg_read = 0x00;
     
-    
+  uint8_t psr_cfg = 0x14;
+  uint8_t psr_cfg_read = 0x00;
+
+  uint8_t cfg_reg = 0x06;
+  uint8_t cfg_reg_read = 0x00;
+
+  uint8_t baro_reset_read = 0x10;
 
 
   /* USER CODE END 2 */
@@ -150,28 +203,42 @@ int main(void)
   /* USER CODE END BSP */
 
 
-  if (HAL_I2C_Mem_Write(&hi2c1, baro_I2C_ADDR << 1, baro_TMP_CFG, I2C_MEMADD_SIZE_8BIT, &tmp_cfg, 1, HAL_MAX_DELAY) == HAL_OK) {
-      printf("WROTE tmp_cfg %02x to baro_TMP_CFG\n\r", tmp_cfg);
-    }
-    else{
-      printf("Error in attempting write\n\r");
-    }
+  // Configuration Register
+  write_register(baro_CFG_REG, cfg_reg);
 
+  // Measurement Register Configuration
+  meas_cfg_read = read_register(baro_MEAS_CFG);
+  meas_cfg = (meas_cfg_read & 0xF8) | (meas_cfg & 0x07); //Preserve the original bits 7-3, write to bits 2-0
+  write_register(baro_MEAS_CFG, meas_cfg);
+
+  // Temperature Configuration
+  write_register(baro_TMP_CFG, tmp_cfg);
+
+  // Pressure Configuration
+  //Write 7-bits to pressure register. Bit mask in order to preserve the original bits that aren't being written to.
+  psr_cfg_read = read_register(baro_PRS_CFG);
+  psr_cfg = (psr_cfg_read & 0x80) | (psr_cfg & 0x7F); //Preserve the original bit 7, write to bits 6-0
+  write_register(baro_PRS_CFG, psr_cfg);
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+    // Read registers
+    printf("READ tmp 0x%02x from baro_TMP_B0\n\r", read_register(baro_TMP_B0));
+    printf("READ tmp 0x%02x from baro_TMP_B1\n\r", read_register(baro_TMP_B1));
+    printf("READ tmp 0x%02x from baro_TMP_B2\n\r", read_register(baro_TMP_B2));
+
+
+    printf("READ psr 0x%02x from baro_PSR_B0\n\r", read_register(baro_PSR_B0));
+    printf("READ psr 0x%02x from baro_PSR_B1\n\r", read_register(baro_PSR_B1));
+    printf("READ psr 0x%02x from baro_PSR_B2\n\r", read_register(baro_PSR_B2));
+  
+    delay(500); // Wait for 1 second before reading again
 
     /* -- Sample board code for User push-button in interrupt mode ---- */
     if (BspButtonState == BUTTON_PRESSED)
     {
-      if (HAL_I2C_Mem_Read(&hi2c1, baro_I2C_ADDR << 1, baro_TMP_CFG, I2C_MEMADD_SIZE_8BIT, &tmp_cfg_read, 1, HAL_MAX_DELAY) == HAL_OK) {
-        printf("READ tmp_cfg %02x from baro_TMP_CFG\n\r", tmp_cfg_read);
-      }
-      else{
-        printf("Error in attempting read\n\r");
-      }
       /* Update button state */
       BspButtonState = BUTTON_RELEASED;
       /* -- Sample board code to toggle leds ---- */
