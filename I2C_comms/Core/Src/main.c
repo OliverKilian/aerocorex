@@ -19,6 +19,7 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include <stdint.h>
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -99,18 +100,27 @@ static void MX_I2C1_Init(void);
 // Calibration Coefficients
 int16_t c0_val;
 int16_t c1_val;
-int16_t c00_val;
-int16_t c10_val;
+int32_t c00_val;
+int32_t c10_val;
 int16_t c01_val;
 int16_t c11_val;
 int16_t c20_val;
 int16_t c21_val;
 int16_t c30_val;
+float scale_factor = 253952.0;
+float t_raw;
+float p_raw;
+float temp_scaled;
+float pres_scaled;
 
 // Read register function
 uint8_t read_register(uint8_t reg) {
-  uint8_t data;
-  HAL_I2C_Mem_Read(&hi2c1, baro_I2C_ADDR << 1, reg, I2C_MEMADD_SIZE_8BIT, &data, 1, HAL_MAX_DELAY);
+  uint8_t data = 0;
+  if (HAL_I2C_Mem_Read(&hi2c1, baro_I2C_ADDR << 1, reg, I2C_MEMADD_SIZE_8BIT, &data, 1, HAL_MAX_DELAY) == HAL_OK) {
+    // Successfully read the register
+  } else {
+    // Handle error (e.g., print an error message, retry, etc.)
+  };
   return data;
 }
 
@@ -133,7 +143,6 @@ void delay(uint32_t milliseconds) {
   */
 int main(void)
 {
-
   /* USER CODE BEGIN 1 */
 
   /* USER CODE END 1 */
@@ -163,20 +172,10 @@ int main(void)
   /* USER CODE BEGIN 2 */
  
   // Read write variable declarations
-  uint8_t meas_cfg = 0x03;
-  uint8_t meas_cfg_read = 0x00;
-
   uint8_t tmp_cfg = 0x90;
-  uint8_t tmp_cfg_read = 0x00;
-    
   uint8_t psr_cfg = 0x14;
   uint8_t psr_cfg_read = 0x00;
-
-  uint8_t cfg_reg = 0x06;
-  uint8_t cfg_reg_read = 0x00;
-
-  uint8_t baro_reset_read = 0x10;
-
+  uint8_t cfg_reg = 0x0C;
 
   /* USER CODE END 2 */
 
@@ -223,27 +222,34 @@ int main(void)
   }
 
   c00_val = (read_register(baro_c00_a) << 12) | (read_register(baro_c00_b) << 4) | (read_register(baro_c00_c10) >> 4);
-  if (c00_val & 0x080000) { // Check if the sign bit is set
-    c00_val |= 0xFF000000; // Sign extend to 32 bits
+  if (c00_val & 0x80000) { // Check if the sign bit is set
+    c00_val |= 0xFFF00000; // Sign extend to 32 bits
   }
 
+  c10_val = ((read_register(baro_c00_c10) & 0x0F) << 16) | (read_register(baro_c10_a) << 8) | read_register(baro_c10_b);
+  if (c10_val & 0x80000) { // Check if the sign bit is set
+      c10_val |= 0xFFF00000; // Sign extend to 32 bits
+    }
+
+  c01_val = (read_register(baro_c01_a) << 8) | read_register(baro_c01_b);
+
+  c11_val = (read_register(baro_c11_a) << 8) | read_register(baro_c11_b);
+
+  c20_val = (read_register(baro_c20_a) << 8) | read_register(baro_c20_b);
+
+  c21_val = (read_register(baro_c21_a) << 8) | read_register(baro_c21_b);
+
+  c30_val = (read_register(baro_c30_a) << 8) | read_register(baro_c30_b);
 
   printf("c0_val: %d\n\r", c0_val);
   printf("c1_val: %d\n\r", c1_val);
-
-
-
-
-  // Configuration Register
-  write_register(baro_CFG_REG, cfg_reg);
-
-  // Measurement Register Configuration
-  meas_cfg_read = read_register(baro_MEAS_CFG);
-  meas_cfg = (meas_cfg_read & 0xF8) | (meas_cfg & 0x07); //Preserve the original bits 7-3, write to bits 2-0
-  write_register(baro_MEAS_CFG, meas_cfg);
-
-  // Temperature Configuration
-  write_register(baro_TMP_CFG, tmp_cfg);
+  printf("c00_val: %d\n\r", c00_val);
+  printf("c10_val: %d\n\r", c10_val);
+  printf("c01_val: %d\n\r", c01_val);
+  printf("c11_val: %d\n\r", c11_val);
+  printf("c20_val: %d\n\r", c20_val);
+  printf("c21_val: %d\n\r", c21_val);
+  printf("c30_val: %d\n\r", c30_val);
 
   // Pressure Configuration
   //Write 7-bits to pressure register. Bit mask in order to preserve the original bits that aren't being written to.
@@ -251,34 +257,61 @@ int main(void)
   psr_cfg = (psr_cfg_read & 0x80) | (psr_cfg & 0x7F); //Preserve the original bit 7, write to bits 6-0
   write_register(baro_PRS_CFG, psr_cfg);
 
+  // Temperature Configuration
+  write_register(baro_TMP_CFG, tmp_cfg);
+  delay(50);
+
+  // Configuration Register
+  write_register(baro_CFG_REG, cfg_reg);
+  delay(50);
+
+  // meas_cfg_read = read_register(baro_MEAS_CFG);
+  // meas_cfg = (meas_cfg_read & 0xF8) | (meas_cfg & 0x07); //Preserve the original bits 7-3, write to bits 2-0
+
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-    // Read registers
-    printf("READ tmp 0x%02x from baro_TMP_B0\n\r", read_register(baro_TMP_B0));
-    printf("READ tmp 0x%02x from baro_TMP_B1\n\r", read_register(baro_TMP_B1));
-    printf("READ tmp 0x%02x from baro_TMP_B2\n\r", read_register(baro_TMP_B2));
+    // Measurement Register Configuration
+    write_register(baro_MEAS_CFG, 0x02);
+    delay(50); // Wait for 100 ms for the measurement to complete
 
+    // Calculate temperature registers
+    t_raw = (read_register(baro_TMP_B2) << 16 | read_register(baro_TMP_B1) << 8 | read_register(baro_TMP_B0)) / scale_factor;
 
-    printf("READ psr 0x%02x from baro_PSR_B0\n\r", read_register(baro_PSR_B0));
-    printf("READ psr 0x%02x from baro_PSR_B1\n\r", read_register(baro_PSR_B1));
-    printf("READ psr 0x%02x from baro_PSR_B2\n\r", read_register(baro_PSR_B2));
+    // Measurement Register Configuration
+    write_register(baro_MEAS_CFG, 0x01);
+    delay(50); // Wait for 100 ms for the measurement to complete
   
-    delay(500); // Wait for 1 second before reading again
+    // Calculate pressure registers
+    p_raw = (read_register(baro_PSR_B2) << 16 | read_register(baro_PSR_B1) << 8 | read_register(baro_PSR_B0)) / scale_factor;
+  
 
+    printf("Raw Temperature: %d, Raw Pressure: %d\n\r", (int)t_raw, (int)p_raw);
+
+   
+    pres_scaled = c00_val + p_raw*(c10_val + p_raw *(c20_val+ p_raw *c30_val)) + t_raw *c01_val + t_raw * p_raw *(c11_val+p_raw*c21_val);
+    temp_scaled = c0_val * 0.5 + c1_val * (float)t_raw;
+
+    printf("Temperature: %d C, Pressure: %d Pa\n\r", (int)(temp_scaled *1000), (int)pres_scaled);
+
+    // Both values are going up and down when cahnged but their most signifcant values aren't changing which
+    // makes it seem like the values are not changing. Figure out why this is, our coefficients might be wrong.
+
+
+    
     /* -- Sample board code for User push-button in interrupt mode ---- */
-    if (BspButtonState == BUTTON_PRESSED)
-    {
-      /* Update button state */
-      BspButtonState = BUTTON_RELEASED;
-      /* -- Sample board code to toggle leds ---- */
-      BSP_LED_Toggle(LED_GREEN);
-      BSP_LED_Toggle(LED_YELLOW);
-      BSP_LED_Toggle(LED_RED);
+    // if (BspButtonState == BUTTON_PRESSED)
+    // {
+    //   /* Update button state */
+    //   BspButtonState = BUTTON_RELEASED;
+    //   /* -- Sample board code to toggle leds ---- */
+    //   BSP_LED_Toggle(LED_GREEN);
+    //   BSP_LED_Toggle(LED_YELLOW);
+    //   BSP_LED_Toggle(LED_RED);
 
-      /* ..... Perform your action ..... */
-    }
+    //   /* ..... Perform your action ..... */
+    // }
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
