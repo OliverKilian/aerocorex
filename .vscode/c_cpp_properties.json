@@ -1,0 +1,8 @@
+{
+    "configurations": [
+        {
+            "name": "STM32",
+            "compileCommands": "${workspaceFolder}/I2C_comms/build/Debug/compile_commands.json"
+        }
+    ]
+}
