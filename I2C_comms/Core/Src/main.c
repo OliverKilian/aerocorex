@@ -107,9 +107,12 @@ int16_t c11_val;
 int16_t c20_val;
 int16_t c21_val;
 int16_t c30_val;
-float scale_factor = 253952.0;
-float t_raw;
-float p_raw;
+float pres_scale_factor = 253952.0f;
+float temp_scale_factor = 524288.0f;
+int32_t t_raw;
+int32_t p_raw;
+float t_sc;
+float p_sc;
 float temp_scaled;
 float pres_scaled;
 
@@ -172,10 +175,10 @@ int main(void)
   /* USER CODE BEGIN 2 */
  
   // Read write variable declarations
-  uint8_t tmp_cfg = 0x90;
+  uint8_t tmp_cfg = 0x00;
   uint8_t psr_cfg = 0x14;
   uint8_t psr_cfg_read = 0x00;
-  uint8_t cfg_reg = 0x0C;
+  uint8_t cfg_reg = 0x04;
 
   /* USER CODE END 2 */
 
@@ -233,7 +236,7 @@ int main(void)
 
   c01_val = (read_register(baro_c01_a) << 8) | read_register(baro_c01_b);
 
-  c11_val = (read_register(baro_c11_a) << 8) | read_register(baro_c11_b);
+  c11_val = ((read_register(baro_c11_a) << 8) | read_register(baro_c11_b));
 
   c20_val = (read_register(baro_c20_a) << 8) | read_register(baro_c20_b);
 
@@ -251,6 +254,20 @@ int main(void)
   printf("c21_val: %d\n\r", c21_val);
   printf("c30_val: %d\n\r", c30_val);
 
+
+  // after coefficient reads, before configuring PRS_CFG/TMP_CFG:
+
+  // Read COEF_SRCE (0x28) - tells us which sensor the factory coefficients were derived from
+  uint8_t coef_srce = read_register(0x28);
+  uint8_t tmp_ext = coef_srce & 0x80;   // bit 7 = TMP_COEF_SRCE
+  printf("COEF_SRCE: 0x%02X, TMP_EXT to use: 0x%02X\n\r", coef_srce, tmp_ext);
+
+  // Temperature Configuration: TMP_EXT MUST match COEF_SRCE bit 7. 1x oversampling.
+  tmp_cfg = tmp_ext | 0x00;   // rate bits don't matter in command mode; PRC=0000=1x
+
+  write_register(baro_TMP_CFG, tmp_cfg);
+  delay(70);
+
   // Pressure Configuration
   //Write 7-bits to pressure register. Bit mask in order to preserve the original bits that aren't being written to.
   psr_cfg_read = read_register(baro_PRS_CFG);
@@ -259,11 +276,11 @@ int main(void)
 
   // Temperature Configuration
   write_register(baro_TMP_CFG, tmp_cfg);
-  delay(50);
+  delay(70);
 
   // Configuration Register
   write_register(baro_CFG_REG, cfg_reg);
-  delay(50);
+  delay(70);
 
   // meas_cfg_read = read_register(baro_MEAS_CFG);
   // meas_cfg = (meas_cfg_read & 0xF8) | (meas_cfg & 0x07); //Preserve the original bits 7-3, write to bits 2-0
@@ -274,26 +291,33 @@ int main(void)
   {
     // Measurement Register Configuration
     write_register(baro_MEAS_CFG, 0x02);
-    delay(50); // Wait for 100 ms for the measurement to complete
+    delay(70); // Wait for 100 ms for the measurement to complete
 
     // Calculate temperature registers
-    t_raw = (read_register(baro_TMP_B2) << 16 | read_register(baro_TMP_B1) << 8 | read_register(baro_TMP_B0)) / scale_factor;
-
+    t_raw = (read_register(baro_TMP_B2) << 16 | read_register(baro_TMP_B1) << 8 | read_register(baro_TMP_B0));
+    if(t_raw & 0x800000) { // Check if the sign bit is set
+      t_raw |= 0xFF000000; // Sign extend to 32 bits
+    }
     // Measurement Register Configuration
     write_register(baro_MEAS_CFG, 0x01);
-    delay(50); // Wait for 100 ms for the measurement to complete
+    delay(70); // Wait for 100 ms for the measurement to complete
   
     // Calculate pressure registers
-    p_raw = (read_register(baro_PSR_B2) << 16 | read_register(baro_PSR_B1) << 8 | read_register(baro_PSR_B0)) / scale_factor;
-  
+    p_raw = (read_register(baro_PSR_B2) << 16 | read_register(baro_PSR_B1) << 8 | read_register(baro_PSR_B0));
+    if(p_raw & 0x800000) { // Check if the sign bit is set
+      p_raw |= 0xFF000000; // Sign extend to 32 bits
+    }
 
-    printf("Raw Temperature: %d, Raw Pressure: %d\n\r", (int)t_raw, (int)p_raw);
+    t_sc = (float)t_raw / temp_scale_factor;
+    p_sc = (float)p_raw / pres_scale_factor;
+
+    printf("Raw Temperature: %d, Raw Pressure: %d\n\r", (int)(t_raw), (int)p_raw);
 
    
-    pres_scaled = c00_val + p_raw*(c10_val + p_raw *(c20_val+ p_raw *c30_val)) + t_raw *c01_val + t_raw * p_raw *(c11_val+p_raw*c21_val);
-    temp_scaled = c0_val * 0.5 + c1_val * (float)t_raw;
+    pres_scaled = c00_val + p_sc*(c10_val + p_sc *(c20_val+ p_sc *c30_val)) + t_sc *c01_val + t_sc * p_sc *(c11_val+p_sc*c21_val);
+    temp_scaled = c0_val * 0.5 + c1_val * t_sc;
 
-    printf("Temperature: %d C, Pressure: %d Pa\n\r", (int)(temp_scaled *1000), (int)pres_scaled);
+    printf("Temperature: %d C, Pressure: %d Pa\n\r", (int)(temp_scaled), (int)pres_scaled);
 
     // Both values are going up and down when cahnged but their most signifcant values aren't changing which
     // makes it seem like the values are not changing. Figure out why this is, our coefficients might be wrong.
