@@ -19,7 +19,9 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include "dps310.h"
 #include <stdint.h>
+#include <stdio.h>
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -47,6 +49,7 @@ COM_InitTypeDef BspCOMInit;
 __IO uint32_t BspButtonState = BUTTON_RELEASED;
 
 I2C_HandleTypeDef hi2c1;
+I2C_HandleTypeDef hi2c2;
 
 /* USER CODE BEGIN PV */
 
@@ -57,6 +60,7 @@ void SystemClock_Config(void);
 static void MPU_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_I2C1_Init(void);
+static void MX_I2C2_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -66,10 +70,61 @@ static void MX_I2C1_Init(void);
 #include "dps310.h"
 
 
+#define imu_user_ctrl 0x03
+#define REG_BANK_SEL 0X7F
+#define IMU_I2C_ADDR 0x69
+#define PWR_MGMT_1 0x06
+#define PWR_MGMT_2 0x07
+#define GYRO_CFG_1 0x01
+#define ACCEL_CFG 0x14
+#define GYRO_SMPLRT_DIV 0x00
+#define ACCEL_SMPLRT_DIV_1 0x10
+#define ACCEL_SMPLRT_DIV_2 0x11
+
+#define GYRO_XOUT_H 0x33
+#define GYRO_XOUT_L 0x34
+#define GYRO_YOUT_H 0x35
+#define GYRO_YOUT_L 0x36
+#define GYRO_ZOUT_H 0x37
+#define GYRO_ZOUT_L 0x38
+
+#define ACCEL_XOUT_H 0x2D
+#define ACCEL_XOUT_L 0x2E
+#define ACCEL_YOUT_H 0x2F
+#define ACCEL_YOUT_L 0x30
+#define ACCEL_ZOUT_H 0x31
+#define ACCEL_ZOUT_L 0x32
+
+void w_reg(uint8_t reg, uint8_t value, I2C_HandleTypeDef *hi2c) {
+  HAL_I2C_Mem_Write(hi2c, IMU_I2C_ADDR << 1, reg, I2C_MEMADD_SIZE_8BIT, &value, 1, HAL_MAX_DELAY);
+}
+
+uint8_t r_reg(uint8_t reg, I2C_HandleTypeDef *hi2c) {
+  uint8_t stuff = 0;
+  if (HAL_I2C_Mem_Read(hi2c, IMU_I2C_ADDR << 1, reg, I2C_MEMADD_SIZE_8BIT, &stuff, 1, HAL_MAX_DELAY) == HAL_OK) {
+    // Successfully read the register
+  } else {
+    // Handle error (e.g., print an error message, retry, etc.)
+  };
+  return stuff;
+}
+
+
+
+void select_bank(uint8_t bank, I2C_HandleTypeDef *hi2c) {
+    // Write the bank number to the REG_BANK_SEL register
+    //write_register(REG_BANK_SEL, 0x69, bank << 4, hi2c);
+    uint8_t val = (bank & 0x03) << 4;
+    w_reg(REG_BANK_SEL, val, hi2c);
+}
+
 
 
 
 /* USER CODE END 0 */
+
+
+
 
 /**
   * @brief  The application entry point.
@@ -77,6 +132,7 @@ static void MX_I2C1_Init(void);
   */
 int main(void)
 {
+
   /* USER CODE BEGIN 1 */
 
   /* USER CODE END 1 */
@@ -103,8 +159,9 @@ int main(void)
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_I2C1_Init();
+  MX_I2C2_Init();
   /* USER CODE BEGIN 2 */
- 
+  dps310_init(&hi2c1);
 
   /* USER CODE END 2 */
 
@@ -138,14 +195,99 @@ int main(void)
 
   /* USER CODE END BSP */
 
-  dps310_init(&hi2c1);
-
-  
-
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
+
+
+
+  // Initialize the IMU
+  uint8_t data = 0;
+
+  select_bank(0, &hi2c1); // Select the desired bank
+  
+  
+  //  Ensure IMU is working properly (should returen 0xEA)
+  if (HAL_I2C_Mem_Read(&hi2c1, IMU_I2C_ADDR << 1, 0x00, I2C_MEMADD_SIZE_8BIT, &data, 1, HAL_MAX_DELAY) == HAL_OK) {
+    // Successfully read the register
+    printf("WHO_AM_I: 0x%02X\n\r", data);
+  } 
+  else {
+    // Handle error (e.g., print an error message, retry, etc.)
+    printf("Error reading WHO_AM_I register\n\r");
+  }
+
+  // Reset all registers to default values
+  w_reg(PWR_MGMT_1, 0x80, &hi2c1); // Set the reset bit in USER_CTRL register
+  HAL_Delay(100); // Wait for the reset to complete
+
+  // Wake up the device and set a clock source
+  w_reg(PWR_MGMT_1, 0x01, &hi2c1); // Clear the reset bit and set clock source to PLL
+  HAL_Delay(50);
+
+  // Enable the Accelerometer and Gyroscope
+  w_reg(PWR_MGMT_2, 0x00, &hi2c1); // Clear the disable bits for both accelerometer and gyroscope
+  HAL_Delay(50);
+  
+  // Configure the gyro
+  select_bank(2, &hi2c1); // Select the desired bank
+  HAL_Delay(50);
+
+  w_reg(GYRO_CFG_1, 0x03, &hi2c1); // Set Gyroscope configuration (e.g., 250 dps full scale)
+  w_reg(GYRO_SMPLRT_DIV, 0x03, &hi2c1); // Set Gyroscope sample rate divider
+
+  // Configure the accelerometer
+  w_reg(ACCEL_CFG, 0x03, &hi2c1); // Set Accelerometer configuration (e.g., 2g full scale)
+  w_reg(ACCEL_SMPLRT_DIV_1, 0x00, &hi2c1); // Set Accelerometer sample rate divider 1
+  w_reg(ACCEL_SMPLRT_DIV_2, 0x04, &hi2c1); // Set Accelerometer sample rate divider 2
+
+  // Read the gyro
+  select_bank(0, &hi2c1); // Select the desired bank
+  int16_t gyro_x, gyro_y, gyro_z;
+  int x_angular_rate, y_angular_rate, z_angular_rate;
+
+  // Read the accelerometer
+  int16_t accel_x, accel_y, accel_z;
+  int x_acceleration, y_acceleration, z_acceleration;
+
   while (1)
   {
+    /* USER CODE BEGIN 3 */
+    // Read Gyro
+    gyro_x = (r_reg(GYRO_XOUT_H, &hi2c1) << 8) | r_reg(GYRO_XOUT_L, &hi2c1);
+    gyro_y = (r_reg(GYRO_YOUT_H, &hi2c1) << 8) | r_reg(GYRO_YOUT_L, &hi2c1);
+    gyro_z = (r_reg(GYRO_ZOUT_H, &hi2c1) << 8) | r_reg(GYRO_ZOUT_L, &hi2c1);
+
+    x_angular_rate = gyro_x / 65.5;
+    y_angular_rate = gyro_y / 65.5;
+    z_angular_rate = gyro_z / 65.5;
+
+    printf("Gyro X: %d dps, Gyro Y: %d dps, Gyro Z: %d dps\n\r", x_angular_rate, y_angular_rate, z_angular_rate);
+
+    // Read Accel
+    accel_x = (r_reg(ACCEL_XOUT_H, &hi2c1) << 8) | r_reg(ACCEL_XOUT_L, &hi2c1);
+    accel_y = (r_reg(ACCEL_YOUT_H, &hi2c1) << 8) | r_reg(ACCEL_YOUT_L, &hi2c1);
+    accel_z = (r_reg(ACCEL_ZOUT_H, &hi2c1) << 8) | r_reg(ACCEL_ZOUT_L, &hi2c1);
+
+    x_acceleration = (accel_x * 1000) / 8192.0;
+    y_acceleration = (accel_y * 1000) / 8192.0;
+    z_acceleration = (accel_z * 1000) / 8192.0;
+
+    printf("Accelerometer X: %d mg, Accelerometer Y: %d mg, Accelerometer Z: %d mg\n\r", x_acceleration, y_acceleration, z_acceleration);
+
+    /* -- Sample board code for User push-button in interrupt mode ---- */
+    // if (BspButtonState == BUTTON_PRESSED)
+    // {
+    //   /* Update button state */
+    //   BspButtonState = BUTTON_RELEASED;
+    //   /* -- Sample board code to toggle leds ---- */
+    //   BSP_LED_Toggle(LED_GREEN);
+    //   BSP_LED_Toggle(LED_YELLOW);
+    //   BSP_LED_Toggle(LED_RED);
+
+    //   /* ..... Perform your action ..... */
+    // }
+    /* USER CODE END WHILE */
+
     /* USER CODE BEGIN 3 */
     
     /* -- Sample board code for User push-button in interrupt mode ---- */
@@ -175,12 +317,58 @@ int main(void)
   */
 void SystemClock_Config(void)
 {
-  /* Placeholder SystemClock_Config — restore CubeMX-generated clock settings if needed */
+  RCC_OscInitTypeDef RCC_OscInitStruct = {0};
+  RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
+
+  /** Supply configuration update enable
+  */
+  HAL_PWREx_ConfigSupply(PWR_LDO_SUPPLY);
+
+  /** Configure the main internal regulator output voltage
+  */
+  __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE2);
+
+  while(!__HAL_PWR_GET_FLAG(PWR_FLAG_VOSRDY)) {}
+
+  /** Initializes the RCC Oscillators according to the specified parameters
+  * in the RCC_OscInitTypeDef structure.
+  */
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
+  RCC_OscInitStruct.HSIState = RCC_HSI_DIV1;
+  RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
+  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_NONE;
+  if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /** Initializes the CPU, AHB and APB buses clocks
+  */
+  RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
+                              |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2
+                              |RCC_CLOCKTYPE_D3PCLK1|RCC_CLOCKTYPE_D1PCLK1;
+  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_HSI;
+  RCC_ClkInitStruct.SYSCLKDivider = RCC_SYSCLK_DIV1;
+  RCC_ClkInitStruct.AHBCLKDivider = RCC_HCLK_DIV1;
+  RCC_ClkInitStruct.APB3CLKDivider = RCC_APB3_DIV1;
+  RCC_ClkInitStruct.APB1CLKDivider = RCC_APB1_DIV1;
+  RCC_ClkInitStruct.APB2CLKDivider = RCC_APB2_DIV1;
+  RCC_ClkInitStruct.APB4CLKDivider = RCC_APB4_DIV1;
+
+  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_1) != HAL_OK)
+  {
+    Error_Handler();
+  }
 }
 
-/* I2C1 init function moved from misplaced location */
+/**
+  * @brief I2C1 Initialization Function
+  * @param None
+  * @retval None
+  */
 static void MX_I2C1_Init(void)
 {
+
   /* USER CODE BEGIN I2C1_Init 0 */
 
   /* USER CODE END I2C1_Init 0 */
@@ -222,6 +410,54 @@ static void MX_I2C1_Init(void)
 }
 
 /**
+  * @brief I2C2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_I2C2_Init(void)
+{
+
+  /* USER CODE BEGIN I2C2_Init 0 */
+
+  /* USER CODE END I2C2_Init 0 */
+
+  /* USER CODE BEGIN I2C2_Init 1 */
+
+  /* USER CODE END I2C2_Init 1 */
+  hi2c2.Instance = I2C2;
+  hi2c2.Init.Timing = 0x10707DBC;
+  hi2c2.Init.OwnAddress1 = 0;
+  hi2c2.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
+  hi2c2.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
+  hi2c2.Init.OwnAddress2 = 0;
+  hi2c2.Init.OwnAddress2Masks = I2C_OA2_NOMASK;
+  hi2c2.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
+  hi2c2.Init.NoStretchMode = I2C_NOSTRETCH_DISABLE;
+  if (HAL_I2C_Init(&hi2c2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /** Configure Analogue filter
+  */
+  if (HAL_I2CEx_ConfigAnalogFilter(&hi2c2, I2C_ANALOGFILTER_ENABLE) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /** Configure Digital filter
+  */
+  if (HAL_I2CEx_ConfigDigitalFilter(&hi2c2, 0) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN I2C2_Init 2 */
+
+  /* USER CODE END I2C2_Init 2 */
+
+}
+
+/**
   * @brief GPIO Initialization Function
   * @param None
   * @retval None
@@ -235,17 +471,13 @@ static void MX_GPIO_Init(void)
 
   /* GPIO Ports Clock Enable */
   __HAL_RCC_GPIOC_CLK_ENABLE();
+  __HAL_RCC_GPIOF_CLK_ENABLE();
   __HAL_RCC_GPIOH_CLK_ENABLE();
   __HAL_RCC_GPIOB_CLK_ENABLE();
+  __HAL_RCC_GPIOG_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(LD1_GPIO_Port, LD1_Pin, GPIO_PIN_RESET);
-
-  /*Configure GPIO pin : PB__Button__Pin */
-  GPIO_InitStruct.Pin = PB__Button__Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(PB__Button__GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pin : LD1_Pin */
   GPIO_InitStruct.Pin = LD1_Pin;
@@ -253,6 +485,16 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
   HAL_GPIO_Init(LD1_GPIO_Port, &GPIO_InitStruct);
+
+  // /*Configure GPIO pin : interrupt1_Pin */
+  // GPIO_InitStruct.Pin = interrupt1_Pin;
+  // GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
+  // GPIO_InitStruct.Pull = GPIO_NOPULL;
+  // HAL_GPIO_Init(interrupt1_GPIO_Port, &GPIO_InitStruct);
+
+  /* EXTI interrupt init*/
+  HAL_NVIC_SetPriority(EXTI15_10_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI15_10_IRQn);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 
