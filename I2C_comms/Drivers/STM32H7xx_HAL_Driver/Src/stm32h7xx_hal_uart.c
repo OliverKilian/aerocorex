@@ -1204,7 +1204,8 @@ HAL_StatusTypeDef HAL_UART_Transmit(UART_HandleTypeDef *huart, const uint8_t *pD
   * @note   When UART parity is not enabled (PCE = 0), and Word Length is configured to 9 bits (M1-M0 = 01),
   *         the received data is handled as a set of u16. In this case, Size must indicate the number
   *         of u16 available through pData.
-  * @note When FIFO mode is enabled, the RXFNE flag is set as long as the RXFIFO
+  * @note When FIFO mod
+  as long as the RXFIFO
   *       is not empty. Read operations from the RDR register are performed when
   *       RXFNE flag is set. From hardware perspective, RXFNE flag and
   *       RXNE are mapped on the same bit-field.

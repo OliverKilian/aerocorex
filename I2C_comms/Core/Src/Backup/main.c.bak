@@ -19,6 +19,7 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 
+
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 
@@ -51,7 +52,7 @@ __IO uint32_t BspButtonState = BUTTON_RELEASED;
 
 I2C_HandleTypeDef hi2c1;
 
-UART_HandleTypeDef huart1;
+UART_HandleTypeDef huart5;
 
 /* USER CODE BEGIN PV */
 
@@ -62,12 +63,11 @@ void SystemClock_Config(void);
 static void MPU_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_I2C1_Init(void);
-static void MX_USART1_UART_Init(void);
+static void MX_UART5_Init(void);
 /* USER CODE BEGIN PFP */
 void parse_gnss_data(char *gnss_sentence) {
     // Example: Print the received GNSS sentence
-    printf("YEAH BABY");
-    //printf("Received GNSS sentence: %s\n", gnss_sentence);
+    printf("Received GNSS sentence: %s\n", gnss_sentence);
 }
 /* USER CODE END PFP */
 
@@ -113,7 +113,7 @@ int main(void)
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_I2C1_Init();
-  MX_USART1_UART_Init();
+  MX_UART5_Init();
   /* USER CODE BEGIN 2 */
   dps310_init(&hi2c1);
   imu_init(&hi2c1);
@@ -197,24 +197,6 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-    // Read Gyro
-    
-    
-    /* -- Sample board code for User push-button in interrupt mode ---- */
-    // if (BspButtonState == BUTTON_PRESSED)
-    // {
-    //   /* Update button state */
-    //   BspButtonState = BUTTON_RELEASED;
-    //   /* -- Sample board code to toggle leds ---- */
-    //   BSP_LED_Toggle(LED_GREEN);
-    //   BSP_LED_Toggle(LED_YELLOW);
-    //   BSP_LED_Toggle(LED_RED);
-
-    //   /* ..... Perform your action ..... */
-    // }
-    /* USER CODE END WHILE */
-
-    /* USER CODE BEGIN 3 */
     
     /* -- Sample board code for User push-button in interrupt mode ---- */
     // if (BspButtonState == BUTTON_PRESSED)
@@ -231,8 +213,7 @@ int main(void)
     /* USER CODE END WHILE */
 
     // Parse the GNSS module
-    if (HAL_UART_Receive(&huart1, &data, 1, 5) == HAL_OK) {
-      printf("Received data: %d\n", data); // Debug print to check received data
+    if (HAL_UART_Receive(&huart5, &data, 1, 2) == HAL_OK) {
       if(data == '$') {
         buf_index = 0; // Reset buffer index if start of sentence is detected
         buffer[buf_index++] = data; // Store the '$' character
@@ -241,7 +222,7 @@ int main(void)
       else if (buf_index > 0) { // Only store data if we have started a sentence
         buffer[buf_index++] = data;
         
-        if(data == '\n') {//|| buf_index >= sizeof(buffer)) { // If new line or buffer is full
+        if(data == '\n' || buf_index >= sizeof(buffer)) { // If new line or buffer is full
           buffer[buf_index] = '\0'; // Null terminate the string
           parse_gnss_data(buffer); // Call your parsing function
           buf_index = 0;
@@ -358,50 +339,50 @@ static void MX_I2C1_Init(void)
 }
 
 /**
-  * @brief USART1 Initialization Function
+  * @brief UART5 Initialization Function
   * @param None
   * @retval None
   */
-static void MX_USART1_UART_Init(void)
+static void MX_UART5_Init(void)
 {
 
-  /* USER CODE BEGIN USART1_Init 0 */
+  /* USER CODE BEGIN UART5_Init 0 */
 
-  /* USER CODE END USART1_Init 0 */
+  /* USER CODE END UART5_Init 0 */
 
-  /* USER CODE BEGIN USART1_Init 1 */
+  /* USER CODE BEGIN UART5_Init 1 */
 
-  /* USER CODE END USART1_Init 1 */
-  huart1.Instance = USART1;
-  huart1.Init.BaudRate = 9600;
-  huart1.Init.WordLength = UART_WORDLENGTH_8B;
-  huart1.Init.StopBits = UART_STOPBITS_1;
-  huart1.Init.Parity = UART_PARITY_NONE;
-  huart1.Init.Mode = UART_MODE_TX_RX;
-  huart1.Init.HwFlowCtl = UART_HWCONTROL_NONE;
-  huart1.Init.OverSampling = UART_OVERSAMPLING_16;
-  huart1.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
-  huart1.Init.ClockPrescaler = UART_PRESCALER_DIV1;
-  huart1.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
-  if (HAL_UART_Init(&huart1) != HAL_OK)
+  /* USER CODE END UART5_Init 1 */
+  huart5.Instance = UART5;
+  huart5.Init.BaudRate = 9600;
+  huart5.Init.WordLength = UART_WORDLENGTH_8B;
+  huart5.Init.StopBits = UART_STOPBITS_1;
+  huart5.Init.Parity = UART_PARITY_NONE;
+  huart5.Init.Mode = UART_MODE_TX_RX;
+  huart5.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart5.Init.OverSampling = UART_OVERSAMPLING_16;
+  huart5.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
+  huart5.Init.ClockPrescaler = UART_PRESCALER_DIV1;
+  huart5.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
+  if (HAL_UART_Init(&huart5) != HAL_OK)
   {
     Error_Handler();
   }
-  if (HAL_UARTEx_SetTxFifoThreshold(&huart1, UART_TXFIFO_THRESHOLD_1_8) != HAL_OK)
+  if (HAL_UARTEx_SetTxFifoThreshold(&huart5, UART_TXFIFO_THRESHOLD_1_8) != HAL_OK)
   {
     Error_Handler();
   }
-  if (HAL_UARTEx_SetRxFifoThreshold(&huart1, UART_RXFIFO_THRESHOLD_1_8) != HAL_OK)
+  if (HAL_UARTEx_SetRxFifoThreshold(&huart5, UART_RXFIFO_THRESHOLD_1_8) != HAL_OK)
   {
     Error_Handler();
   }
-  if (HAL_UARTEx_DisableFifoMode(&huart1) != HAL_OK)
+  if (HAL_UARTEx_DisableFifoMode(&huart5) != HAL_OK)
   {
     Error_Handler();
   }
-  /* USER CODE BEGIN USART1_Init 2 */
+  /* USER CODE BEGIN UART5_Init 2 */
 
-  /* USER CODE END USART1_Init 2 */
+  /* USER CODE END UART5_Init 2 */
 
 }
 
@@ -412,7 +393,6 @@ static void MX_USART1_UART_Init(void)
   */
 static void MX_GPIO_Init(void)
 {
-  GPIO_InitTypeDef GPIO_InitStruct = {0};
   /* USER CODE BEGIN MX_GPIO_Init_1 */
 
   /* USER CODE END MX_GPIO_Init_1 */
@@ -420,16 +400,7 @@ static void MX_GPIO_Init(void)
   /* GPIO Ports Clock Enable */
   __HAL_RCC_GPIOC_CLK_ENABLE();
   __HAL_RCC_GPIOH_CLK_ENABLE();
-  __HAL_RCC_GPIOG_CLK_ENABLE();
   __HAL_RCC_GPIOB_CLK_ENABLE();
-
-  /*Configure GPIO pin : PG14 */
-  GPIO_InitStruct.Pin = GPIO_PIN_14;
-  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  GPIO_InitStruct.Alternate = GPIO_AF7_USART6;
-  HAL_GPIO_Init(GPIOG, &GPIO_InitStruct);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 
